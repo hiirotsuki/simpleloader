@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2024 Ørjan Malde <red@foxi.me>
+ * Copyright (c) 2024-2025 Ørjan Malde <red@foxi.me>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -16,38 +16,38 @@
 
 #include <windows.h>
 
-int inject_dll(HANDLE hProcess, const char* dll_path)
+int InjectDll(HANDLE hProcess, const char *dllPath)
 {
-	HANDLE remote_thread;
-	void *load_library_addr;
+	HANDLE remoteThread;
+	void *loadLibraryAddr;
 
-	LPVOID remote_memory = VirtualAllocEx(hProcess, NULL, lstrlen(dll_path) + 1, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
-	if(!remote_memory)
+	LPVOID remoteMemory = VirtualAllocEx(hProcess, NULL, lstrlen(dllPath) + 1, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+	if(!remoteMemory)
 	{
 		MessageBoxA(NULL, "Failed to allocate memory in target process.", NULL, 0x00000000L);
 		return 0;
 	}
 
-	if(!WriteProcessMemory(hProcess, remote_memory, dll_path, lstrlen(dll_path) + 1, NULL))
+	if(!WriteProcessMemory(hProcess, remoteMemory, dllPath, lstrlen(dllPath) + 1, NULL))
 	{
 		MessageBoxA(NULL, "Failed to write to target process memory.", NULL, 0x00000000L);
-		VirtualFreeEx(hProcess, remote_memory, 0, MEM_RELEASE);
+		VirtualFreeEx(hProcess, remoteMemory, 0, MEM_RELEASE);
 		return 0;
 	}
 
-	load_library_addr = (void *)GetProcAddress(GetModuleHandleA("kernel32.dll"), "LoadLibraryA");
-	remote_thread = CreateRemoteThread(hProcess, NULL, 0, (LPTHREAD_START_ROUTINE)load_library_addr, remote_memory, 0, NULL);
-	if(!remote_thread)
+	loadLibraryAddr = (void *)GetProcAddress(GetModuleHandleA("kernel32.dll"), "LoadLibraryA");
+	remoteThread = CreateRemoteThread(hProcess, NULL, 0, (LPTHREAD_START_ROUTINE)loadLibraryAddr, remoteMemory, 0, NULL);
+	if(!remoteThread)
 	{
 		MessageBoxA(NULL, "Failed to create remote thread.", NULL, 0x00000000L);
-		VirtualFreeEx(hProcess, remote_memory, 0, MEM_RELEASE);
+		VirtualFreeEx(hProcess, remoteMemory, 0, MEM_RELEASE);
 		return 0;
 	}
 
-	WaitForSingleObject(remote_thread, INFINITE);
+	WaitForSingleObject(remoteThread, INFINITE);
 
-	VirtualFreeEx(hProcess, remote_memory, 0, MEM_RELEASE);
-	CloseHandle(remote_thread);
+	VirtualFreeEx(hProcess, remoteMemory, 0, MEM_RELEASE);
+	CloseHandle(remoteThread);
 
 	return 1;
 }
@@ -55,10 +55,10 @@ int inject_dll(HANDLE hProcess, const char* dll_path)
 int WinMainCRTStartup(void)
 {
 	int s1 = 0, s2 = 0;
-	char dll_buf[64] = {0};
-	char exe_buf[64] = {0};
-	char dll_path[MAX_PATH];
-	char ini_path[MAX_PATH];
+	char dllBuf[64] = {0};
+	char exeBuf[64] = {0};
+	char dllPath[MAX_PATH];
+	char iniPath[MAX_PATH];
 	PROCESS_INFORMATION pi;
 	STARTUPINFOA si;
 
@@ -67,11 +67,11 @@ int WinMainCRTStartup(void)
 
 	ZeroMemory(&pi, sizeof(pi));
 
-	GetFullPathName("loader.ini", sizeof(ini_path), ini_path, NULL);
-	s1 = GetPrivateProfileString("loader", "DLL", NULL, dll_buf, sizeof(dll_buf), ini_path);
-	s2 = GetPrivateProfileString("loader", "EXE", NULL, exe_buf, sizeof(exe_buf), ini_path);
+	GetFullPathName("loader.ini", sizeof(iniPath), iniPath, NULL);
+	s1 = GetPrivateProfileString("loader", "DLL", NULL, dllBuf, sizeof(dllBuf), iniPath);
+	s2 = GetPrivateProfileString("loader", "EXE", NULL, exeBuf, sizeof(exeBuf), iniPath);
 
-	GetFullPathName(dll_buf, sizeof(dll_path), dll_path, NULL);
+	GetFullPathName(dllBuf, sizeof(dllPath), dllPath, NULL);
 
 	/* invalid value checks */
 	if(s1 < 5 || s2 < 5)
@@ -80,13 +80,13 @@ int WinMainCRTStartup(void)
 		return 1;
 	}
 
-	if(!CreateProcessA(exe_buf, NULL, NULL, NULL, FALSE, CREATE_SUSPENDED, NULL, NULL, &si, &pi))
+	if(!CreateProcessA(exeBuf, NULL, NULL, NULL, FALSE, CREATE_SUSPENDED, NULL, NULL, &si, &pi))
 	{
 		MessageBoxA(NULL, "Failed to create process.", NULL, 0x00000000L);
 		return 1;
 	}
 
-	if(!inject_dll(pi.hProcess, dll_path))
+	if(!InjectDll(pi.hProcess, dllPath))
 	{
 		MessageBoxA(NULL, "Failed to inject DLL.", NULL, 0x00000000L);
 		TerminateProcess(pi.hProcess, 1);
